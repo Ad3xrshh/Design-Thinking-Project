@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Remix Swiggy SafeBite - Anti-Fraud Food Delivery",
+  "description": "Next-gen food delivery platform with tri-view synchronization (Customer, Restaurant, Delivery Partner) and secure Customer-Only OTP handover authentication to eliminate food scams.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

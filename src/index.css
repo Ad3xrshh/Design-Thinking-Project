@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #FAF8F5;
+    color: #17181C;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes steamRise {
+  0% {
+    transform: translateY(4px) scale(0.95);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(-10px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes scooterGlide {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-2.5px) rotate(-1.5deg);
+  }
+}
+
+@keyframes scanSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+@keyframes radarWave {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+.animate-steam-1 {
+  animation: steamRise 2.2s ease-out infinite;
+}
+
+.animate-steam-2 {
+  animation: steamRise 2.2s ease-out 0.7s infinite;
+}
+
+.animate-steam-3 {
+  animation: steamRise 2.2s ease-out 1.4s infinite;
+}
+
+.animate-scooter {
+  animation: scooterGlide 1.4s ease-in-out infinite;
+}
+
+.animate-scan {
+  animation: scanSweep 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-radar {
+  animation: radarWave 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-steam-1,
+  .animate-steam-2,
+  .animate-steam-3,
+  .animate-scooter,
+  .animate-scan,
+  .animate-radar {
+    animation: none;
+  }
+}
+
+/* Custom subtle scrollbars */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
