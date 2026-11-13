@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MapPin,
@@ -47,7 +47,11 @@ const STAGE_PREVIEW_STEPS: { status: OrderStatus; label: string }[] = [
   { status: 'DELIVERED', label: 'Delivered' },
 ];
 
-export const CustomerView: React.FC = () => {
+interface CustomerViewProps {
+  embedded?: boolean;
+}
+
+export const CustomerView: React.FC<CustomerViewProps> = ({ embedded = false }) => {
   const {
     currentOrder,
     cart,
@@ -83,11 +87,41 @@ export const CustomerView: React.FC = () => {
     'Flat 402, Shanti Nilaya Apartments, 7th Cross, Koramangala 4th Block, Bengaluru'
   );
 
+  const prevOrderSnapshotRef = useRef<{
+    id?: string;
+    status?: OrderStatus;
+    auditLen?: number;
+  }>({
+    id: currentOrder?.id,
+    status: currentOrder?.status,
+    auditLen: currentOrder?.auditLogs.length,
+  });
+
   useEffect(() => {
     if (customerSettings.autoMaskPin) {
       setShowOtp(false);
     }
   }, [customerSettings.autoMaskPin]);
+
+  useEffect(() => {
+    const prev = prevOrderSnapshotRef.current;
+    if (currentOrder) {
+      const orderSwitched = currentOrder.id !== prev.id;
+      const orderReopenedOrReset =
+        (prev.status === 'DELIVERED' && currentOrder.status !== 'DELIVERED') ||
+        (prev.auditLen !== undefined && currentOrder.auditLogs.length < prev.auditLen);
+
+      if ((orderSwitched || orderReopenedOrReset) && currentOrder.status !== 'DELIVERED') {
+        setActiveTab('tracking');
+        setSelectedRestaurant(null);
+      }
+    }
+    prevOrderSnapshotRef.current = {
+      id: currentOrder?.id,
+      status: currentOrder?.status,
+      auditLen: currentOrder?.auditLogs.length,
+    };
+  }, [currentOrder]);
 
   const categories = [
     'All',
@@ -157,25 +191,49 @@ export const CustomerView: React.FC = () => {
     ? scamReports.filter((r) => r.orderId === currentOrder.id).length
     : scamReports.length;
 
+  const stageActionPrompt = currentOrder
+    ? currentOrder.status === 'ARRIVED_DOORSTEP'
+      ? currentOrder.sealVerifiedByCustomer
+        ? 'Action required: Share your 4-digit Handover PIN verbally with the rider.'
+        : 'Action required: 1) Check the bag seal is intact below, 2) Share your 4-digit PIN.'
+      : currentOrder.status === 'DELIVERED'
+      ? 'Handover complete. Rate your experience below or inspect your security log.'
+      : currentOrder.status === 'OUT_FOR_DELIVERY'
+      ? 'Keep your Handover PIN private until the rider arrives with your sealed bag.'
+      : currentOrder.status === 'READY_FOR_PICKUP'
+      ? 'Bag is sealed at the kitchen and waiting for rider verification.'
+      : 'Your secret Handover PIN is forged and locked strictly on your screen.'
+    : '';
+
   return (
     <div
-      className={`min-h-screen pb-24 transition-colors duration-500 ${
+      className={`${
+        embedded ? 'pb-6' : cart.length > 0 ? 'pb-24' : 'pb-12'
+      } transition-colors duration-500 ${
         activeStageTheme ? activeStageTheme.pageBg : 'bg-[#FAF8F5]'
       }`}
     >
       {/* Top Location, Navigation & Top-Right Safety/Settings Control */}
-      <div className="bg-white/90 backdrop-blur-md border-b border-stone-200/90 px-4 py-2.5 sticky top-16 z-30">
-        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div
+        className={`bg-white/95 backdrop-blur-md border-b border-stone-200/90 px-4 py-2.5 sticky ${
+          embedded ? 'top-0' : 'top-[102px] sm:top-16'
+        } z-20`}
+      >
+        <div
+          className={`${
+            embedded ? 'w-full' : 'max-w-5xl mx-auto'
+          } flex flex-wrap items-center justify-between gap-2.5`}
+        >
           {/* Location & Customer Info */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[#17181C] text-[#FAF8F5] flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-[#17181C] text-[#FAF8F5] flex items-center justify-center shrink-0">
               <MapPin className="w-4 h-4 text-[#E84A27]" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#17181C]">
                 <span className="truncate">Koramangala 4th Block</span>
                 <span className="text-stone-400" aria-hidden="true">·</span>
-                <span className="text-stone-500 font-medium">Bengaluru</span>
+                <span className="text-stone-500 font-medium shrink-0">Bengaluru</span>
               </div>
               <div className="text-[11px] text-stone-500 truncate">
                 Ananya Deshmukh · Flat 402
@@ -184,18 +242,18 @@ export const CustomerView: React.FC = () => {
           </div>
 
           {/* Center/Right Controls + Top-Right Settings & Scam Report Gear */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-1.5 ml-auto flex-wrap">
             {currentOrder && (
               <button
                 onClick={() => setActiveTab('tracking')}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E84A27] ${
                   activeTab === 'tracking'
                     ? 'bg-[#E84A27] text-white shadow-xs'
                     : 'bg-white text-stone-800 border border-stone-200 hover:border-[#E84A27]'
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Track #{currentOrder.orderNumber.split('-')[1]}</span>
+                <span className="tabular-nums">Track #{currentOrder.orderNumber.split('-')[1]}</span>
               </button>
             )}
 
@@ -204,7 +262,7 @@ export const CustomerView: React.FC = () => {
                 setActiveTab('browse');
                 setSelectedRestaurant(null);
               }}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E84A27] ${
                 activeTab === 'browse'
                   ? 'bg-[#17181C] text-white shadow-xs'
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
@@ -219,10 +277,12 @@ export const CustomerView: React.FC = () => {
               onClick={() => openReportPortal('report')}
               aria-label="Safety Settings and Report Scam"
               title="Settings & Report Delivery Scam"
-              className="group relative flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer"
+              className="group relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
             >
               <Settings className="w-3.5 h-3.5 text-rose-700 group-hover:rotate-45 transition-transform duration-300" />
-              <span className="hidden sm:inline">Report & Settings</span>
+              <span className={embedded ? 'hidden xl:inline' : 'hidden sm:inline'}>
+                Report &amp; Settings
+              </span>
               {orderReportsCount > 0 && (
                 <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-700 text-white tabular-nums">
                   {orderReportsCount}
@@ -234,7 +294,7 @@ export const CustomerView: React.FC = () => {
       </div>
 
       {/* Main Content Container */}
-      <div className="max-w-5xl mx-auto px-4 pt-5">
+      <div className={embedded ? 'px-3.5 pt-3.5' : 'max-w-5xl mx-auto px-4 pt-5 sm:pt-6'}>
         {/* ======================================================== */}
         {/* TAB 1: DYNAMIC THEME ORDER TRACKING & HANDOVER PIN       */}
         {/* ======================================================== */}
@@ -244,28 +304,30 @@ export const CustomerView: React.FC = () => {
             initial={{ opacity: 0.85, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="space-y-4"
+            className={embedded ? 'space-y-3.5' : 'space-y-4 sm:space-y-5'}
           >
             {/* 1. DYNAMIC STAGE ATMOSPHERE HERO CARD */}
             <div
-              className={`rounded-2xl bg-gradient-to-br ${activeStageTheme.cardGradient} p-5 shadow-md overflow-hidden relative`}
+              className={`rounded-2xl bg-gradient-to-br ${activeStageTheme.cardGradient} p-4 sm:p-6 shadow-sm overflow-hidden relative`}
             >
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="space-y-1.5 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/80 font-medium">
+                <div className="space-y-2 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/85 font-medium">
                     <span className="font-mono font-bold text-white tabular-nums">
                       {currentOrder.orderNumber}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{currentOrder.restaurantName}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{activeStageTheme.badgeText}</span>
+                    <span className="px-2 py-0.5 rounded-md bg-white/15 text-white font-semibold">
+                      {activeStageTheme.badgeText}
+                    </span>
                   </div>
 
                   <h1 className="font-display text-xl sm:text-2xl font-extrabold text-white tracking-tight text-balance">
                     {activeStageTheme.headline}
                   </h1>
-                  <p className="text-xs sm:text-sm text-white/85 max-w-xl leading-relaxed">
+                  <p className="text-xs sm:text-sm text-white/90 max-w-xl leading-relaxed">
                     {activeStageTheme.subline}
                   </p>
                 </div>
@@ -277,11 +339,17 @@ export const CustomerView: React.FC = () => {
                 />
               </div>
 
+              {/* Stage Required Customer Action Guidance */}
+              <div className="mt-3.5 px-3.5 py-2.5 rounded-xl bg-black/25 border border-white/20 text-xs text-white font-medium leading-snug flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+                <span>{stageActionPrompt}</span>
+              </div>
+
               {/* Interactive Stage Theme Switcher Strip (Explore stage themes live!) */}
-              <div className="mt-4 pt-3.5 border-t border-white/15 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white/80">
+              <div className="mt-3.5 pt-3 border-t border-white/15 flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white/85">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Stage Theme:</span>
+                  <span>Stage Preview:</span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
@@ -290,11 +358,12 @@ export const CustomerView: React.FC = () => {
                     return (
                       <button
                         key={step.status}
+                        aria-pressed={isCurrent}
                         onClick={() => setOrderStagePreview(currentOrder.id, step.status)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                           isCurrent
                             ? 'bg-white text-[#17181C] shadow-xs'
-                            : 'bg-white/10 text-white/85 hover:bg-white/20'
+                            : 'bg-white/10 text-white/90 hover:bg-white/20'
                         }`}
                       >
                         {step.label}
@@ -304,15 +373,31 @@ export const CustomerView: React.FC = () => {
                 </div>
 
                 <div className="text-xs font-mono font-bold text-white tabular-nums flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-white/80" />
+                  <Clock className="w-3.5 h-3.5 text-white/85" />
                   <span>{activeStageTheme.etaLabel}</span>
                 </div>
               </div>
             </div>
 
             {/* 2. INTERACTIVE 4-STAGE JOURNEY STEPPER (NO STATIC EMOJIS) */}
-            <div className={`bg-white rounded-2xl p-4 border ${activeStageTheme.borderColor}`}>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className={`bg-white rounded-2xl p-3.5 sm:p-4 border ${activeStageTheme.borderColor} space-y-2.5`}>
+              {!embedded && (
+                <div className="flex items-center justify-between text-xs px-0.5">
+                  <span className="font-display font-bold text-[#17181C]">
+                    Verified Delivery Milestones
+                  </span>
+                  <span className="text-stone-600 font-medium">
+                    Step-by-step custody tracking
+                  </span>
+                </div>
+              )}
+              <div
+                className={
+                  embedded
+                    ? 'grid grid-cols-2 gap-2.5'
+                    : 'grid grid-cols-2 sm:grid-cols-4 gap-2.5'
+                }
+              >
                 {[
                   {
                     key: 'kitchen',
@@ -374,10 +459,10 @@ export const CustomerView: React.FC = () => {
                     key={step.key}
                     className={`p-3 rounded-xl border transition-all flex items-center gap-2.5 ${
                       step.completed
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
                         : step.active
                         ? 'bg-stone-900 border-stone-900 text-white'
-                        : 'bg-stone-50 border-stone-200 text-stone-400'
+                        : 'bg-stone-50 border-stone-200 text-stone-600'
                     }`}
                   >
                     <div
@@ -386,7 +471,7 @@ export const CustomerView: React.FC = () => {
                           ? 'bg-emerald-600 text-white'
                           : step.active
                           ? 'bg-[#E84A27] text-white'
-                          : 'bg-stone-200/70 text-stone-400'
+                          : 'bg-stone-200/80 text-stone-600'
                       }`}
                     >
                       {step.icon}
@@ -396,10 +481,10 @@ export const CustomerView: React.FC = () => {
                       <div
                         className={`text-[10px] font-mono truncate tabular-nums ${
                           step.completed
-                            ? 'text-emerald-700'
+                            ? 'text-emerald-800'
                             : step.active
                             ? 'text-stone-300'
-                            : 'text-stone-400'
+                            : 'text-stone-500'
                         }`}
                       >
                         {step.sub}
@@ -411,19 +496,34 @@ export const CustomerView: React.FC = () => {
             </div>
 
             {/* 3. INTERACTIVE HANDOVER PIN VAULT + TAMPER SEAL INSPECTOR */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+            <div
+              className={
+                embedded
+                  ? 'grid grid-cols-1 gap-3.5'
+                  : 'grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch'
+              }
+            >
               {/* Handover PIN Vault */}
-              <div className="md:col-span-7 bg-[#17181C] text-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm border border-stone-800">
+              <div
+                className={`${
+                  embedded ? '' : 'md:col-span-7'
+                } bg-[#17181C] text-white rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-sm border border-stone-800`}
+              >
                 <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10">
-                  <div className="flex items-center gap-2 text-xs font-bold text-white">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Customer-Only Handover PIN</span>
+                  <div>
+                    <div className="text-[11px] font-semibold text-emerald-400 mb-0.5">
+                      Step 2 · Doorstep Verification
+                    </div>
+                    <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Customer-Only Handover PIN</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => regenerateCustomerOtp(currentOrder.id)}
-                      className="flex items-center gap-1 text-[11px] text-stone-200 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg transition-colors font-semibold cursor-pointer"
+                      className="flex items-center gap-1 text-[11px] text-stone-200 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-lg transition-colors font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                       title="Generate a fresh PIN"
                     >
                       <RefreshCw className="w-3 h-3" />
@@ -431,7 +531,8 @@ export const CustomerView: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setShowOtp(!showOtp)}
-                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      aria-label={showOtp ? 'Mask Handover PIN' : 'Reveal Handover PIN'}
+                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                       title={showOtp ? 'Mask PIN' : 'Reveal PIN'}
                     >
                       {showOtp ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -439,7 +540,7 @@ export const CustomerView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="py-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="py-4 sm:py-5 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
                     {currentOrder.handoverOtp.split('').map((digit, i) => (
                       <motion.div
@@ -455,7 +556,8 @@ export const CustomerView: React.FC = () => {
 
                     <button
                       onClick={() => handleCopyOtp(currentOrder.handoverOtp)}
-                      className="ml-1 h-14 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer"
+                      aria-label="Copy Handover PIN"
+                      className="ml-1 h-14 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                       title="Copy PIN"
                     >
                       {copiedOtp ? (
@@ -483,14 +585,14 @@ export const CustomerView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-stone-400">
+                <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-stone-300">
                   <span className="flex items-center gap-1.5">
-                    <Lock className="w-3 h-3 text-amber-400" />
+                    <Lock className="w-3 h-3 text-amber-400 shrink-0" />
                     Never share over phone call or SMS
                   </span>
                   <button
                     onClick={() => openReportPortal('report')}
-                    className="text-rose-400 hover:text-rose-300 font-semibold underline cursor-pointer"
+                    className="text-rose-300 hover:text-rose-200 font-semibold underline cursor-pointer"
                   >
                     Report issue
                   </button>
@@ -498,36 +600,45 @@ export const CustomerView: React.FC = () => {
               </div>
 
               {/* Interactive Tamper Seal & Quick Scam Report Card */}
-              <div className="md:col-span-5 bg-white rounded-2xl p-4 sm:p-5 border border-stone-200 flex flex-col justify-between space-y-3">
+              <div
+                className={`${
+                  embedded ? '' : 'md:col-span-5'
+                } bg-white rounded-2xl p-4 sm:p-5 border border-stone-200 flex flex-col justify-between gap-4`}
+              >
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-stone-900">Tamper-Seal Check</span>
-                    <span className="font-mono text-xs font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200 tabular-nums">
+                  <div className="text-[11px] font-semibold text-violet-700 mb-0.5">
+                    Step 1 · Physical Bag Inspection
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-stone-900">
+                      Tamper-Seal Check
+                    </span>
+                    <span className="font-mono text-xs font-bold text-violet-800 bg-violet-50 px-2 py-0.5 rounded border border-violet-200 tabular-nums shrink-0">
                       {currentOrder.tamperSealCode}
                     </span>
                   </div>
-                  <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
+                  <p className="text-xs text-stone-600 mt-2 leading-relaxed">
                     Before sharing your Handover PIN, verify the adhesive security strip across the bag handles is unbroken.
                   </p>
                 </div>
 
                 {currentOrder.sealVerifiedByCustomer ? (
-                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2">
-                    <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900 flex items-center gap-2">
+                    <BadgeCheck className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Seal verified intact by you</span>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
                     <button
                       onClick={() => verifySealByCustomer(currentOrder.id)}
-                      className="w-full py-2 px-3 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full py-2.5 px-3 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Confirm Bag Seal Is Intact</span>
                     </button>
                     <button
                       onClick={() => openReportPortal('report')}
-                      className="w-full py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
                       <span>Seal Open or Scam? Report Now</span>
@@ -575,41 +686,51 @@ export const CustomerView: React.FC = () => {
             )}
 
             {/* 4. DELIVERY PARTNER CARD */}
-            <div className="bg-white rounded-2xl p-4 border border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+            <div
+              className={`bg-white rounded-2xl p-4 border border-stone-200 flex flex-col ${
+                embedded ? 'gap-3' : 'sm:flex-row sm:items-center sm:justify-between gap-3'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
                 <FoodImage
                   src={currentOrder.deliveryPartner.photoUrl}
                   alt={currentOrder.deliveryPartner.name}
-                  className="w-12 h-12 rounded-xl object-cover border border-stone-200"
+                  className="w-11 h-11 rounded-xl object-cover border border-stone-200 shrink-0"
                 />
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm font-bold text-[#17181C]">
-                    <span>{currentOrder.deliveryPartner.name}</span>
+                    <span className="truncate">{currentOrder.deliveryPartner.name}</span>
                     <span aria-hidden="true" className="text-stone-300">·</span>
-                    <span className="flex items-center gap-0.5 text-xs font-bold text-emerald-700 tabular-nums">
+                    <span className="flex items-center gap-0.5 text-xs font-bold text-emerald-700 tabular-nums shrink-0">
                       <Star className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
                       {currentOrder.deliveryPartner.rating}
                     </span>
                   </div>
-                  <p className="text-xs text-stone-500">
+                  <p className="text-xs text-stone-500 truncate">
                     EV Fleet · {currentOrder.deliveryPartner.vehicleNo} ·{' '}
                     <span className="tabular-nums">{currentOrder.deliveryPartner.tripsCount}+</span> safe trips
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div
+                className={
+                  embedded
+                    ? 'grid grid-cols-2 gap-2 w-full'
+                    : 'flex items-center gap-2 w-full sm:w-auto shrink-0'
+                }
+              >
                 <a
                   href={`tel:${currentOrder.deliveryPartner.phone}`}
                   onClick={(e) => e.preventDefault()}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 text-stone-700 text-xs font-bold hover:bg-stone-50 transition-colors"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 text-stone-700 text-xs font-bold hover:bg-stone-50 transition-colors whitespace-nowrap"
                 >
                   <Phone className="w-3.5 h-3.5" />
                   <span>Call Rider</span>
                 </a>
                 <button
                   onClick={() => setActiveRole('delivery')}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#17181C] text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#17181C] text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Bike className="w-3.5 h-3.5 text-[#E84A27]" />
                   <span>Open Rider App</span>
@@ -617,15 +738,21 @@ export const CustomerView: React.FC = () => {
               </div>
             </div>
 
-            {/* 5. ORDER SUMMARY & AUDIT LOGS (TWO-COLUMN ON DESKTOP) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 5. ORDER SUMMARY & AUDIT LOGS */}
+            <div
+              className={
+                embedded
+                  ? 'grid grid-cols-1 gap-3.5'
+                  : 'grid grid-cols-1 md:grid-cols-2 gap-4'
+              }
+            >
               {/* Order Receipt */}
-              <div className="bg-white rounded-2xl p-4 border border-stone-200 space-y-3">
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-stone-200 space-y-3">
                 <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
                   <h3 className="font-display text-sm font-bold text-stone-900">
                     Order Summary
                   </h3>
-                  <span className="text-xs text-stone-500">{currentOrder.restaurantName}</span>
+                  <span className="text-xs text-stone-600">{currentOrder.restaurantName}</span>
                 </div>
 
                 <div className="divide-y divide-stone-100">
@@ -642,7 +769,7 @@ export const CustomerView: React.FC = () => {
                           ●
                         </span>
                         <span className="font-semibold text-stone-800">
-                          {item.name} <span className="text-stone-400">× {item.quantity}</span>
+                          {item.name} <span className="text-stone-500">× {item.quantity}</span>
                         </span>
                       </div>
                       <span className="font-bold text-stone-900 tabular-nums">
@@ -673,13 +800,13 @@ export const CustomerView: React.FC = () => {
               </div>
 
               {/* Anti-Fraud Audit Log */}
-              <div className="bg-white rounded-2xl p-4 border border-stone-200 space-y-3">
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-stone-200 space-y-3">
                 <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
                   <h3 className="font-display text-sm font-bold text-stone-900 flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-[#E84A27]" />
                     <span>Handover Security Trail</span>
                   </h3>
-                  <span className="text-[11px] font-mono text-stone-500 tabular-nums">
+                  <span className="text-[11px] font-mono text-stone-600 tabular-nums">
                     {currentOrder.auditLogs.length} events
                   </span>
                 </div>
@@ -699,12 +826,12 @@ export const CustomerView: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-stone-900 truncate">{log.event}</span>
-                          <span className="text-[10px] text-stone-400 font-mono tabular-nums shrink-0">
+                          <span className="text-[10px] text-stone-500 font-mono tabular-nums shrink-0">
                             {log.timestamp}
                           </span>
                         </div>
                         {log.details && (
-                          <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
+                          <p className="text-[11px] text-stone-600 mt-0.5 leading-snug">
                             {log.details}
                           </p>
                         )}
@@ -723,12 +850,16 @@ export const CustomerView: React.FC = () => {
         {activeTab === 'browse' && !selectedRestaurant && (
           <div className="space-y-5">
             {/* Editorial Banner */}
-            <div className="rounded-2xl bg-[#17181C] text-white p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div
+              className={`rounded-2xl bg-[#17181C] text-white p-5 flex flex-col ${
+                embedded ? 'items-start gap-3' : 'sm:p-6 sm:flex-row sm:items-center sm:justify-between gap-4'
+              }`}
+            >
               <div className="space-y-1.5 max-w-xl">
                 <div className="text-xs font-semibold text-[#E84A27]">
                   Tamper-Sealed Kitchens · Handover PIN Verified
                 </div>
-                <h2 className="font-display text-2xl sm:text-3xl font-extrabold leading-tight text-balance">
+                <h2 className="font-display text-xl sm:text-2xl font-extrabold leading-tight text-balance">
                   Curated Bengaluru Kitchens With Zero-Scam Delivery
                 </h2>
                 <p className="text-xs sm:text-sm text-stone-300">
@@ -737,7 +868,7 @@ export const CustomerView: React.FC = () => {
               </div>
               <button
                 onClick={() => openReportPortal('settings')}
-                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/15 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/15 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Customize Stage Themes
               </button>
@@ -767,7 +898,7 @@ export const CustomerView: React.FC = () => {
             {/* Search & Quick Filter Toggles */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Search biryani, dosa, burgers, sourdough..."
@@ -823,7 +954,13 @@ export const CustomerView: React.FC = () => {
             </div>
 
             {/* Restaurants Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div
+              className={
+                embedded
+                  ? 'grid grid-cols-1 gap-4'
+                  : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5'
+              }
+            >
               {filteredRestaurants.map((restaurant) => (
                 <motion.div
                   whileHover={{ y: -3 }}
@@ -1026,7 +1163,11 @@ export const CustomerView: React.FC = () => {
             initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 40, opacity: 0 }}
-            className="fixed bottom-4 inset-x-0 max-w-md mx-auto px-4 z-40"
+            className={
+              embedded
+                ? 'sticky bottom-3 mx-3.5 mt-4 z-30'
+                : 'fixed bottom-4 inset-x-0 max-w-md mx-auto px-4 z-40'
+            }
           >
             <div className="bg-[#17181C] text-white rounded-2xl p-3 px-4 shadow-xl flex items-center justify-between border border-stone-800">
               <div>
@@ -1149,11 +1290,13 @@ export const CustomerView: React.FC = () => {
       )}
 
       {/* TOP-RIGHT SETTINGS & REPORT SCAM MODAL */}
-      <CustomerReportSettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        initialTab={settingsInitialTab}
-      />
+      {showSettingsModal && (
+        <CustomerReportSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          initialTab={settingsInitialTab}
+        />
+      )}
     </div>
   );
 };

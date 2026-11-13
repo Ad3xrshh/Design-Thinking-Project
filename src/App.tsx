@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { OrderProvider, useOrder } from './context/OrderContext';
 import { Navbar } from './components/Common/Navbar';
 import { ScamExplainerModal } from './components/Common/ScamExplainerModal';
@@ -10,6 +10,10 @@ import { ShieldCheck, HelpCircle } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { activeRole, setShowFraudExplainer } = useOrder();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeRole]);
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] flex flex-col">

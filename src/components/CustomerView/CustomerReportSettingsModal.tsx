@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   ShieldAlert,
@@ -48,6 +48,17 @@ export const CustomerReportSettingsModal: React.FC<CustomerReportSettingsModalPr
     ticketCode: string;
     label: string;
   } | null>(null);
+
+  const latestOrderIdRef = useRef<string>(currentOrder?.id || activeOrders[0]?.id || '');
+  latestOrderIdRef.current = currentOrder?.id || activeOrders[0]?.id || '';
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab(initialTab);
+      setSubmittedTicket(null);
+      setSelectedOrderId(latestOrderIdRef.current);
+    }
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 
